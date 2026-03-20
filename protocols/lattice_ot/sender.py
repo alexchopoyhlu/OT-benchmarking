@@ -6,9 +6,10 @@ using the receiver's public key. Only the message corresponding
 to the receiver's secret choice bit can be decrypted.
 """
 
+import hashlib
 import numpy as np
 from .params import LatticeParams
-from .utils import generate_secret_vector, lwr_round, encode_message, mat_vec_mult
+from .utils import generate_secret_vector, mat_vec_mult
 
 
 class LatticeOTSender:
@@ -17,27 +18,29 @@ class LatticeOTSender:
         self.params = params
 
     # Encrypt both messages under the receiver's public key
-    def encrypt(self, public_matrix: np.ndarray, receiver_pk: np.ndarray,
+    def encrypt(self, public_matrix: np.ndarray, receiver_pk: dict,
                 m0: bytes, m1: bytes) -> dict:
-        p = self.params.p
+
         q = self.params.q
-        n = self.params.n
 
         r = generate_secret_vector(self.params)
 
-        a_transpose_r = mat_vec_mult(public_matrix.T, r, q)
-        u = lwr_round(a_transpose_r, self.params)
-
-        m0_encoded = encode_message(m0, self.params)
-        m1_encoded = encode_message(m1, self.params)
+        u = mat_vec_mult(public_matrix.T, r, q)
 
         pk0 = receiver_pk[0]
         pk1 = receiver_pk[1]
 
-        pk0_r = mat_vec_mult(pk0, r, q)
-        pk1_r = mat_vec_mult(pk1, r, q)
+        shared0 = int(np.sum(pk0.astype(object) * r.astype(object)) % q)
+        shared1 = int(np.sum(pk1.astype(object) * r.astype(object)) % q)
 
-        c0 = (lwr_round(pk0_r, self.params) + m0_encoded) % p
-        c1 = (lwr_round(pk1_r, self.params) + m1_encoded) % p
+        pad0 = self._hash_to_pad(shared0, len(m0))
+        pad1 = self._hash_to_pad(shared1, len(m1))
+
+        c0 = bytes(a ^ b for a, b in zip(m0, pad0))
+        c1 = bytes(a ^ b for a, b in zip(m1, pad1))
 
         return {"u": u, "c0": c0, "c1": c1}
+
+    def _hash_to_pad(self, shared_value: int, length: int) -> bytes:
+        h = hashlib.shake_256(str(shared_value).encode())
+        return h.digest(length)

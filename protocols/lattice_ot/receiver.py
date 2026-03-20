@@ -6,12 +6,11 @@ key that lets them decrypt only message m_b. The sender
 cannot determine which message was chosen.
 """
 
-import numpy
+import hashlib
 import numpy as np
-
 from .params import LatticeParams
 from .utils import (
-    generate_secret_vector, generate_public_matrix, lwr_round, decode_message, mat_vec_mult
+    generate_secret_vector, generate_public_matrix, mat_vec_mult
 )
 
 class LatticeOTReceiver:
@@ -34,39 +33,34 @@ class LatticeOTReceiver:
         self.choice_bit = choice_bit
         self.secret = generate_secret_vector(self.params)
 
-        pk_real = np.zeros((n, n), dtype=np.int64)
-        for i in range(n):
-            pk_real[i] = mat_vec_mult(
-                public_matrix,
-                (self.secret * (i + 1)) % q,
-                q
-            )
+        pk_real = mat_vec_mult(public_matrix, self.secret, q)
 
-        pk_fake = np.random.randint(0, q, size=(n, n), dtype=np.int64)
+        pk_fake = np.random.randint(0, q, size=n, dtype=np.int64)
 
-        pk = np.zeros((2, n, n), dtype=np.int64)
-        pk[choice_bit] = pk_real
-        pk[1 - choice_bit] = pk_fake
-
-        self._pk_real = pk_real
+        pk = {
+            choice_bit: pk_real,
+            1 - choice_bit: pk_fake
+        }
 
         return pk
 
 
     # Decrypt the chosen message from the sender's ciphertexts
-    def decrypt(self, ciphertext: dict, num_bytes: int) -> numpy.ndarray:
-        p = self.params.p
+    def decrypt(self, ciphertext: dict, message_length: int) -> bytes:
         q = self.params.q
         b = self.choice_bit
 
         u = ciphertext["u"]
         cb = ciphertext[f"c{b}"]
 
-        mask = np.zeros(self.params.n, dtype=np.int64)
-        for i in range(self.params.n):
-            scaled_secret = (self.secret * (i + 1)) % q
-            dot = np.sum(scaled_secret.astype(object) * u.astype(object)) % p
-            mask[i] = dot % p
+        shared = int(np.sum(self.secret.astype(object) * u.astype(object)) % q)
 
-        recovered = (cb - mask) % p
-        return decode_message(recovered, num_bytes)
+        pad = self._hash_to_pad(shared, message_length)
+
+        recovered = bytes(a ^ b for a, b in zip(cb, pad))
+
+        return recovered
+
+    def _hash_to_pad(self, shared_value: int, length: int) -> bytes:
+        h = hashlib.shake_256(str(shared_value).encode())
+        return h.digest(length)
