@@ -3,4 +3,4 @@ __pycache__/
 .idea/
 venv/
 results/logs/
-*.csv
+*.csv.DS_Store
