@@ -12,10 +12,11 @@ from experiments.run_supersonic import run_single_trial as run_supersonic_trial
 from protocols.lattice_ot import LatticeParams
 from protocols.supersonic_ot import SupersonicParams
 from framework.metrics import MetricsCollector
+from framework.communication import ChannelPair, create_socket_pair
 
 
 # Run both protocols at comparable message sizes
-def run_comparison(num_trials: int = 20, warmup_trials: int = 5):
+def run_comparison(num_trials: int = 20, warmup_trials: int = 5, use_sockets: bool = False):
     start_time = time.time()
 
     # Define matching parameter pairs
@@ -85,5 +86,12 @@ def run_comparison(num_trials: int = 20, warmup_trials: int = 5):
         total_time = time.time() - start_time
         print(f"\n>>> Total comparison runtime: {total_time:.2f} seconds <<<\n")
 
+
 if __name__ == "__main__":
-    run_comparison()
+    import sys
+    use_sockets = "--sockets" in sys.argv
+    if use_sockets:
+        print("Running with TCP socket communication\n")
+    else:
+        print("Running with in-process communication\n")
+    run_comparison(use_sockets=use_sockets)
