@@ -88,15 +88,64 @@ class _PairedChannel(Channel):
         return self._recv_ch.receive(label)
 
 
-# TCP socket-based communication, to be implemented later on
-
+# TCP socket-based communication, messages are length-prefixed
 class SocketChannel(Channel):
 
+    def __init__(self, sock: socket.socket, bandwidth_tracker: Optional[BandwidthTracker] = None):
+        self._sock = sock
+        self._bandwidth_tracker = bandwidth_tracker or BandwidthTracker()
+
     def send(self, data: Any, label: str = "") -> None:
-        raise NotImplementedError("Socket channel not implemented yet")
+        raw = pickle.dumps(data)
+        length = len(raw).to_bytes(4, byteorder="big")
+        self._sock.sendall(length + raw)
+        self._bandwidth_tracker.record_sent(length + raw)
 
     def receive(self, label: str = "") -> Any:
-        raise NotImplementedError("Socket channel not implemented yet")
+        length_bytes = self._recv_exact(4)
+        length = int.from_bytes(length_bytes, byteorder="big")
+        raw = self._recv_exact(length)
+        self._bandwidth_tracker.record_received(length_bytes + raw)
+        return pickle.loads(raw)
+
+    # Read exactly n bytes from the socket
+    def _recv_exact(self, n: int) -> bytes:
+        data = b""
+        while len(data) < n:
+            chunk = self._sock.recv(n - len(data))
+            if not chunk:
+                raise ConnectionError("Socket closed unexpectedly")
+            data += chunk
+        return data
+
+    def close(self):
+        self._sock.close()
+
+
+# Create a connected pair of socket channels
+def create_socket_pair(host: str = "127.0.0.1", port: int = 0, bandwidth_tracker: Optional[BandwidthTracker] = None) -> tuple[SocketChannel, SocketChannel]:
+
+    bw = bandwidth_tracker or BandwidthTracker()
+
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind((host, port))
+    actual_port = server_sock.getsockname()[1]
+    server_sock.listen(1)
+
+    # Connect client
+    client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_sock.connect((host, actual_port))
+
+    # Accept on server side
+    conn, _ = server_sock.accept()
+    server_sock.close()
+
+    sender_ch = SocketChannel(conn, bw)
+    receiver_ch = SocketChannel(client_sock, bw)
+    return sender_ch, receiver_ch
+
+
 
 
 
