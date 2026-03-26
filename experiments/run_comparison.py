@@ -10,7 +10,6 @@ from experiments.run_supersonic import run_single_trial as run_supersonic_trial
 from protocols.lattice_ot import LatticeParams
 from protocols.supersonic_ot import SupersonicParams
 from framework.metrics import MetricsCollector
-from test_supersonic_ot import choice
 
 
 # Run both protocols at comparable message sizes

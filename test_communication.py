@@ -3,31 +3,33 @@ from dataclasses import replace
 from framework.communication import ChannelPair
 from framework.benchmark import BandwidthTracker
 
-bw = BandwidthTracker()
-pair = ChannelPair(bandwidth_tracker=bw)
+if __name__ == "__main__":
 
-# Run sender/receiver in separate threads (mimicking a real protocol)
-results = {}
+    bw = BandwidthTracker()
+    pair = ChannelPair(bandwidth_tracker=bw)
 
-def sender_side():
-    pair.sender.send({"message": "hello from sender"}, label="greeting")
-    reply = pair.sender.receive(label="reply")
-    results["sender_got"] = reply
+    # Run sender/receiver in separate threads (mimicking a real protocol)
+    results = {}
 
-def receiver_side():
-    msg = pair.receiver.receive(label="greeting")
-    results["receiver_got"] = msg
-    pair.receiver.send("got it, thanks", label="greeting")
+    def sender_side():
+        pair.sender.send({"message": "hello from sender"}, label="greeting")
+        reply = pair.sender.receive(label="reply")
+        results["sender_got"] = reply
 
-t1 = threading.Thread(target=sender_side)
-t2 = threading.Thread(target=receiver_side)
-t1.start()
-t2.start()
-t1.join()
-t2.join()
+    def receiver_side():
+        msg = pair.receiver.receive(label="greeting")
+        results["receiver_got"] = msg
+        pair.receiver.send("got it, thanks", label="greeting")
 
-print(f"Receiver got: {results['receiver_got']}")
-print(f"Sender got: {results['sender_got']}")
-print(f"Bytes exchanged: {bw.total_bytes}")
-print(f"Messages: {bw.message_count}")
+    t1 = threading.Thread(target=sender_side)
+    t2 = threading.Thread(target=receiver_side)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    print(f"Receiver got: {results['receiver_got']}")
+    print(f"Sender got: {results['sender_got']}")
+    print(f"Bytes exchanged: {bw.total_bytes}")
+    print(f"Messages: {bw.message_count}")
 

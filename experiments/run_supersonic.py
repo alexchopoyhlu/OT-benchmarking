@@ -3,7 +3,6 @@ Experiment runner for Supersonic OT benchmarks
 """
 
 import threading
-from xml.etree.ElementTree import SubElement
 
 from protocols.supersonic_ot import (
     SupersonicParams, SupersonicOTSender, SupersonicOTReceiver, Dealer
@@ -11,7 +10,6 @@ from protocols.supersonic_ot import (
 from framework.benchmark import BenchmarkTimer, MemoryTracker, BandwidthTracker
 from framework.communication import ChannelPair
 from framework.metrics import MetricsCollector, TrialResult
-from test_supersonic_ot import sender_shares, ciphertext
 
 
 # Run one complete Supersonic OT exchange and measure everything

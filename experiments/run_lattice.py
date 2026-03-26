@@ -7,14 +7,10 @@ different parameter sizes and collects performance metrics.
 
 import threading
 
-from numpy.f2py.crackfortran import param_eval
-
 from protocols.lattice_ot import LatticeOTSender, LatticeOTReceiver, LatticeParams
 from framework.benchmark import BenchmarkTimer, MemoryTracker, BandwidthTracker
 from framework.communication import ChannelPair
 from framework.metrics import MetricsCollector, TrialResult
-from test_lattice_ot import public_matrix, ciphertext, params
-
 
 # Run one complete OT protocol exchange and measure everything
 def run_single_trial(params: LatticeParams, m0: bytes, m1: bytes, choice_bit: int, trial_number: int) -> TrialResult:
