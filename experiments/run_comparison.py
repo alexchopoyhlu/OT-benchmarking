@@ -4,6 +4,8 @@ Side-by-side comparison of Lattice OT and Supersonic OT
 Runs both protocols under identical conditions and produces
 a combined results file for Chapter 5 analysis.
 """
+from random import choice
+import time
 
 from experiments.run_lattice import run_single_trial as run_lattice_trial
 from experiments.run_supersonic import run_single_trial as run_supersonic_trial
@@ -13,7 +15,8 @@ from framework.metrics import MetricsCollector
 
 
 # Run both protocols at comparable message sizes
-def run_comparison(num_trials: int = 30):
+def run_comparison(num_trials: int = 20, warmup_trials: int = 5):
+    start_time = time.time()
 
     # Define matching parameter pairs
     comparisons = [
@@ -48,19 +51,26 @@ def run_comparison(num_trials: int = 30):
         m1 = bytes(range(255, 255 - msg_size, -1)) * (msg_size // 256 + 1)
         m1 = m1[:msg_size]
 
-        # Run lattice OT
+        # Warmup trials
+        print(f"  Warming up ({warmup_trials} trials)...")
+        for i in range(warmup_trials):
+            run_lattice_trial(l_params, m0, m1, i % 2, i)
+            run_supersonic_trial(s_params, m0, m1, i % 2, i)
+
+        # Actual measurement
+        print(f"  Running {num_trials} measured trials...")
         lattice_collector = MetricsCollector(f"comparison_lattice_{label}")
         for i in range(num_trials):
             choice = i % 2
             result = run_lattice_trial(l_params, m0, m1, choice, i)
             lattice_collector.add_result(result)
 
-        # Run supersonic OT
         supersonic_collector = MetricsCollector(f"comparison_supersonic_{label}")
         for i in range(num_trials):
             choice = i % 2
             result = run_supersonic_trial(s_params, m0, m1, choice, i)
             supersonic_collector.add_result(result)
+
 
         # Print summaries
         print("--- Lattice OT ---")
@@ -71,6 +81,9 @@ def run_comparison(num_trials: int = 30):
         # Export
         lattice_collector.export_csv(f"results/logs/comparison_lattice_{label}.csv")
         supersonic_collector.export_csv(f"results/logs/comparison_supersonic_{label}.csv")
+
+        total_time = time.time() - start_time
+        print(f"\n>>> Total comparison runtime: {total_time:.2f} seconds <<<\n")
 
 if __name__ == "__main__":
     run_comparison()

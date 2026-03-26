@@ -2,8 +2,6 @@
 Experiment runner for Supersonic OT benchmarks
 """
 
-import threading
-
 from protocols.supersonic_ot import (
     SupersonicParams, SupersonicOTSender, SupersonicOTReceiver, Dealer
 )
@@ -19,72 +17,56 @@ def run_single_trial(params: SupersonicParams, m0: bytes, m1: bytes,
     bw = BandwidthTracker()
     pair = ChannelPair(bandwidth_tracker=bw)
 
-    sender_time = {}
-    receiver_time = {}
-    result_holder = {}
+    # Dealer pre-processing
+    dealer = Dealer(params)
+    sender_shares, receiver_shares = dealer.generate_shares()
 
-    # Dealer pre-processing (measured separately)
-    with BenchmarkTimer() as dealer_timer:
-        dealer = Dealer(params)
-        sender_shares, receiver_shares = dealer.generate_shares()
+    receiver = SupersonicOTReceiver(params)
+    sender = SupersonicOTSender(params)
 
-    def sender_side():
-        sender = SupersonicOTSender(params)
-
-        # Receive masked choice bit from receiver
-        e = pair.sender.receive(label="masked_choice")
-
-        # Encrypt and send ciphertexts
-        with BenchmarkTimer() as t:
-            ciphertext = sender.encrypt(sender_shares, e, m0, m1)
-        sender_time["ms"] = t.elapsed_ms
-
-        pair.sender.send(ciphertext, label="ciphertext")
-
-
-    def receiver_side():
-        receiver = SupersonicOTReceiver(params)
-
-        with BenchmarkTimer() as t:
-            # Mask choice and send to sender
-            e = receiver.mask_choice(choice_bit, receiver_shares)
-            pair.receiver.send(e, label="masked_choice")
-
-            # Receive ciphertexts and decrypt
-            ciphertext = pair.receiver.receive(label="ciphertext")
-            recovered = receiver.decrypt(ciphertext)
-        receiver_time["ms"] = t.elapsed_ms
-
-        expected = m0 if choice_bit == 0 else m1
-        result_holder["correct"] = (recovered == expected)
-
-
-    # Run with overall timing and memory tracking
     with MemoryTracker() as mem:
         with BenchmarkTimer() as total:
-            t1 = threading.Thread(target=sender_side)
-            t2 = threading.Thread(target=receiver_side)
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
+
+            # Step 1: Receiver masks choice
+            with BenchmarkTimer() as receiver_timer:
+                e = receiver.mask_choice(choice_bit, receiver_shares)
+
+            pair.receiver.send(e, label="masked_choice")
+
+            # Step 2: Sender receives masked choice and encrpts
+            recv_e = pair.sender.receive(label="masked_choice")
+
+            with BenchmarkTimer() as sender_timer:
+                ciphertext = sender.encrypt(sender_shares, recv_e, m0, m1)
+
+            pair.sender.send(ciphertext, label="ciphertext")
+
+            # Step 3: Sender receives keys and encrypts
+            recv_ct = pair.receiver.receive(label="ciphertext")
+
+            with BenchmarkTimer() as receiver_decrypt_timer:
+                recovered = receiver.decrypt(recv_ct)
+
+
+    expected = m0 if choice_bit == 0 else m1
+    correct = (recovered == expected)
 
     return TrialResult(
         protocol_name="supersonic_ot",
         trial_number=trial_number,
         message_bits=len(m0) * 8,
         execution_time_ms=total.elapsed_ms,
-        sender_time_ms=sender_time.get("ms", 0),
-        receiver_time_ms=receiver_time.get("ms", 0),
+        sender_time_ms=sender_timer.elapsed_ms,
+        receiver_time_ms=receiver_timer.elapsed_ms + receiver_decrypt_timer.elapsed_ms,
         peak_memory_kb=mem.peak_kb,
         bytes_sent=bw.bytes_sent,
         bytes_received=bw.bytes_received,
         message_count=bw.message_count,
-        correct=result_holder.get("correct", False),
+        correct=correct,
     )
 
 # Run the full Supersonic OT experiment across parameter sizes
-def run_experiment(num_trials: int = 20):
+def run_experiment(num_trials: int = 20, warmup_trials: int = 5):
 
     param_sets = {
         "small": SupersonicParams.small(),
@@ -101,6 +83,11 @@ def run_experiment(num_trials: int = 20):
         m1 = bytes(range(255, 255 - msg_size, -1)) * (msg_size // 256 + 1)
         m1 = m1[:msg_size]
 
+        # Warm-up
+        print(f"  Warming up {label} ({warmup_trials} trials)...")
+
+        # Measured trials
+        print(f" Running {num_trials} measured trials...")
         for i in range(num_trials):
             choice = i % 2
             result = run_single_trial(params, m0, m1, choice, i)
