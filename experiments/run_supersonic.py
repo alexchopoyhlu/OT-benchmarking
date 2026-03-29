@@ -12,10 +12,13 @@ from framework.metrics import MetricsCollector, TrialResult
 
 # Run one complete Supersonic OT exchange and measure everything
 def run_single_trial(params: SupersonicParams, m0: bytes, m1: bytes,
-    choice_bit: int, trial_number: int) -> TrialResult:
+    choice_bit: int, trial_number: int, channel_pair=None, bandwidth_tracker=None) -> TrialResult:
 
-    bw = BandwidthTracker()
-    pair = ChannelPair(bandwidth_tracker=bw)
+    bw = bandwidth_tracker or BandwidthTracker()
+    if channel_pair is None:
+        pair = ChannelPair(bandwidth_tracker=bw)
+    else:
+        pair = channel_pair
 
     # Dealer pre-processing
     dealer = Dealer(params)

@@ -9,6 +9,7 @@ import time
 
 from experiments.run_lattice import run_single_trial as run_lattice_trial
 from experiments.run_supersonic import run_single_trial as run_supersonic_trial
+from framework import BandwidthTracker
 from protocols.lattice_ot import LatticeParams
 from protocols.supersonic_ot import SupersonicParams
 from framework.metrics import MetricsCollector
@@ -38,12 +39,14 @@ def run_comparison(num_trials: int = 20, warmup_trials: int = 5, use_sockets: bo
         },
     ]
 
+    mode = "socket" if use_sockets else "inprocess"
+
     for comp in comparisons:
         label = comp["label"]
         l_params = comp["lattice_params"]
         s_params = comp["supersonic_params"]
 
-        print(f"\n>>> Running comparison: {label} <<<\n")
+        print(f"\n>>> Running comparison: {label} ({mode})<<<\n")
 
         # Generate messages of matching size and use smaller of two for fair comparison
         msg_size = min(l_params.message_bits // 8, s_params.message_bytes)
@@ -58,20 +61,43 @@ def run_comparison(num_trials: int = 20, warmup_trials: int = 5, use_sockets: bo
             run_lattice_trial(l_params, m0, m1, i % 2, i)
             run_supersonic_trial(s_params, m0, m1, i % 2, i)
 
-        # Actual measurement
-        print(f"  Running {num_trials} measured trials...")
-        lattice_collector = MetricsCollector(f"comparison_lattice_{label}")
+        # Supersonic OT measured trials
+        print(f"  Running {num_trials} lattice trials...")
+        lattice_collector = MetricsCollector(f"comparison_lattice_{label}_{mode}")
         for i in range(num_trials):
+            bw = BandwidthTracker()
+            if use_sockets:
+                sender_ch, receiver_ch = create_socket_pair(bandwidth_tracker=bw)
+                pair = type('Pair', (), {'sender': sender_ch, 'receiver': receiver_ch}) ()
+            else:
+                pair = ChannelPair(bandwidth_tracker=bw)
+
             choice = i % 2
-            result = run_lattice_trial(l_params, m0, m1, choice, i)
+            result = run_lattice_trial(l_params, m0, m1, choice, i, channel_pair=pair, bandwidth_tracker=bw)
             lattice_collector.add_result(result)
 
-        supersonic_collector = MetricsCollector(f"comparison_supersonic_{label}")
+            if use_sockets:
+                sender_ch.close()
+                receiver_ch.close()
+
+        # Lattice OT measured trials
+        print(f"  Running {num_trials} supersonic trials...")
+        supersonic_collector = MetricsCollector(f"comparison_supersonic_{label}_{mode}")
         for i in range(num_trials):
+            bw = BandwidthTracker()
+            if use_sockets:
+                sender_ch, receiver_ch = create_socket_pair(bandwidth_tracker=bw)
+                pair = type('Pair', (), {'sender': sender_ch, 'receiver': receiver_ch})()
+            else:
+                pair = ChannelPair(bandwidth_tracker=bw)
+
             choice = i % 2
-            result = run_supersonic_trial(s_params, m0, m1, choice, i)
+            result = run_supersonic_trial(s_params, m0, m1, choice, i, channel_pair=pair, bandwidth_tracker=bw)
             supersonic_collector.add_result(result)
 
+            if use_sockets:
+                sender_ch.close()
+                receiver_ch.close()
 
         # Print summaries
         print("--- Lattice OT ---")
@@ -80,8 +106,8 @@ def run_comparison(num_trials: int = 20, warmup_trials: int = 5, use_sockets: bo
         supersonic_collector.print_summary()
 
         # Export
-        lattice_collector.export_csv(f"results/logs/comparison_lattice_{label}.csv")
-        supersonic_collector.export_csv(f"results/logs/comparison_supersonic_{label}.csv")
+        lattice_collector.export_csv(f"results/logs/comparison_lattice_{label}_{mode}.csv")
+        supersonic_collector.export_csv(f"results/logs/comparison_supersonic_{label}_{mode}.csv")
 
         total_time = time.time() - start_time
         print(f"\n>>> Total comparison runtime: {total_time:.2f} seconds <<<\n")

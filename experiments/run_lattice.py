@@ -11,10 +11,13 @@ from framework.communication import ChannelPair
 from framework.metrics import MetricsCollector, TrialResult
 
 # Run one complete OT protocol exchange and measure everything
-def run_single_trial(params: LatticeParams, m0: bytes, m1: bytes, choice_bit: int, trial_number: int) -> TrialResult:
+def run_single_trial(params: LatticeParams, m0: bytes, m1: bytes, choice_bit: int, trial_number: int, channel_pair=None, bandwidth_tracker=None) -> TrialResult:
 
-    bw = BandwidthTracker()
-    pair = ChannelPair(bandwidth_tracker=bw)
+    bw = bandwidth_tracker or BandwidthTracker()
+    if channel_pair is None:
+        pair = ChannelPair(bandwidth_tracker=bw)
+    else:
+        pair = channel_pair
 
     receiver = LatticeOTReceiver(params)
     sender = LatticeOTSender(params)
