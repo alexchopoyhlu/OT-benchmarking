@@ -30,6 +30,10 @@ pip install numpy cryptodome psutil
 
 ## Running Tests
 ```
-python test_lattice_ot.py
-python test_supersonic_ot.py
+To run both protocols across all three parameter sizes with warm-up trials and prints the summary tables:
+python -m experiments.run_comparison
+
+To run them individually:
+python -m experiments.run_lattice
+python -m experiments.run_supersonic
 ```
